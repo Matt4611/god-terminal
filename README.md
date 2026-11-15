@@ -14,6 +14,29 @@ own UI, no copied assets.
 └──────────────────────────────────────────────────────────────────┘
 ```
 
+## Features
+
+- **Local-first board** — an infinite canvas with pan/zoom, groups, notes, shapes, images, rope wires and per-workspace JSON persistence.
+- **Real terminals** — a real PTY per console for Claude Code, Codex, Gemini, Grok, OpenCode and 29 more agents, with live status, paste guard, handoff and 10k-line scrollback.
+- **Director** — link consoles to the animated gem, spawn an agent, or send one order to the whole wired crew.
+- **Main Brain** — local Ollama or LM Studio chat that plans work, splits orders and keeps project memory; `@agent` and deterministic commands still work.
+- **Studios** — code editor, Markdown vault with link graph, model-written documents with PDF export, editable diagrams and Claude skills.
+- **Desktop extras** — Git panel, usage charts, web tiles, voice input, 18 presets, Mission Map and loops, with no telemetry or account.
+
+## Screenshots
+
+These are the UI screenshots produced by `npm run verify` against the seeded demo board.
+
+| Director board | Compact 1080×680 layout |
+|:---:|:---:|
+| [![Director board with linked consoles and orange rope wires](docs/screenshots/director.png)](docs/screenshots/director.png) | [![Compact God Terminal layout](docs/screenshots/director-compact.png)](docs/screenshots/director-compact.png) |
+
+The Director is wired to two consoles; the Main Brain strip and command dock stay visible. The compact layout keeps all 18 tools and the Director reachable.
+
+[![IPC guard smoke](docs/screenshots/ipc-guard.png)](docs/screenshots/ipc-guard.png)
+
+The IPC guard smoke exercises allowed and blocked renderer actions while the board stays interactive.
+
 ## Requirements
 
 - Windows 10/11 (also runs on macOS and Linux), Node 20+
