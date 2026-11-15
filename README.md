@@ -6,11 +6,11 @@ own UI, no copied assets.
 
 ```
 ┌ topbar: brand · repo · workspaces · needs-you · live ───────────┐
-│ rail │                  infinite board                          │
-│ brain│  ┌─ console ─────┐   ┌─ kanban ──┐                      │
-│ team │  │ claude (PTY)  │   │ backlog…  │   group box          │
-│ agent│  └───────────────┘   └───────────┘                      │
-│ ...  │        Main Brain strip · chat thread · command bar     │
+│ tool │                  infinite board                  │ team  │
+│ rail │  ┌─ console ─────┐   ╭─ Director ──╮             │ crew  │
+│ 46px │  │ claude (PTY)  │═══╡  orange gem  ╞═══╮         │ cards │
+│      │  └───────────────┘   ╰──────────────╯   │         │       │
+│      │        Main Brain strip · command dock  │         │       │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -21,6 +21,12 @@ own UI, no copied assets.
 - [Ollama](https://ollama.com) **or** [LM Studio](https://lmstudio.ai) with a local chat model for the Main Brain, planner, documents, diagrams and memory scan
 - Optional: Codex CLI for worker terminals that run directly on a local model
 - Optional: a local whisper.cpp server for voice (`/inference` + `/health` on port 8080)
+
+## Repository note
+
+This repository intentionally includes the complete build snapshot: `node_modules/`, `out/` and
+`release/`. Files above GitHub's 100 MB limit are stored with Git LFS, so install Git LFS and run
+`git lfs install` before cloning if you need the Electron binary and the Windows release files.
 
 ## Run
 
@@ -74,9 +80,21 @@ only to that local endpoint. Spoken confirmations use the OS voices.
 ## What works
 
 **Board** — pan/zoom 20–300 %, dot grid, marquee selection, drag, resize, duplicate, copy/cut/paste,
-arrow-key nudge, z-order, groups with role tints, wires, text boxes, sticky notes, per-workspace
+arrow-key nudge, z-order, groups with role tints, rope wires, text boxes, sticky notes, per-workspace
 JSON persistence, 10k-line scrollback. **Right-click drag pans**, the **mouse wheel zooms** around
 the pointer, and there is no radial/right-click agent menu anymore.
+
+**Tool rail** — a compact 46 px icon rail replaces the old wide sidebar: select, pan, spawn Director,
+connect, Main Brain, team, new console, note, text, shape, pen, eraser, web tile, image, fit, Mission
+Map, Git and Settings. The active tool is highlighted; the primary cursor is orange. On short windows
+the buttons shrink so all 18 tools stay reachable.
+
+**Director** — a special board node with an animated, clickable gem. It shows every linked console
+and its status, can spawn an agent directly into the crew, and takes one order for the whole wired
+team. Without a link it forwards orders to the normal command parser. Ropes connect any two nodes:
+pick the rope tool, click the first node and then the second; repeating the pair removes the rope.
+Director ropes are orange, other ropes mint, and the live preview follows the cursor. Escape or the
+banner cancels; deleting a node also cleans its Director links.
 
 **Teams** — the composer lines up 1–12 consoles, each with its own agent, and launches all of
 them in one action. Consoles take the first free spot on the board, are grouped, and the camera
@@ -99,11 +117,11 @@ Agent flags for Yolo, per-console restart/pause/kill, handoff and forward, live 
 `TERM=xterm-256color`, color, 85–200 % text size.
 
 **Orchestration** — command bar with a deterministic parser (`spawn 4 codex`, `@Otto …`, `@all …`,
-`connect group 1 to the orchestrator`, `deploy preset Dev HQ`, `commit and push`, …), a Main Brain
-chat with JSON actions, 500-message thread per repo, 18 presets, orchestrator cards, teams/roles,
+`connect group 1 to the director`, `deploy preset Dev HQ`, `commit and push`, …), a Main Brain
+chat with JSON actions, 500-message thread per repo, 18 presets, Director cards, teams/roles,
 Mission Map, loops (interval / idle / output contains, 200 runs), project memory with model scan and
-push, handoffs and forwards. The left rail is intentionally limited to Main Brain, new agent, team,
-fit, map, git and settings; all other features stay in the command bar and panels.
+push, handoffs and forwards. Every board action remains available in the compact tool rail, the
+command bar and the panels.
 
 **Studios** — Code (tree + editor, Ctrl+S, draft state, insert as card), Markdown (vault, reading /
 source / link graph with d3-force, autosave), Documents (model-written, cover + TOC + paginated PDF
@@ -155,6 +173,6 @@ npx electron . --smoke --demo --smoke-ui     # right-drag pan + wheel zoom smoke
 npx electron . --smoke --demo --smoke-zoomout  # zoom-out sharpness screenshot
 npx electron . --smoke --demo --smoke-brain  # Main Brain strip/thread smoke
 npx electron . --smoke --demo --smoke-brain-chat  # one Ollama round-trip through the Main Brain
-npx electron . --smoke --demo --smoke-ring   # orbital quick-menu + team rail screenshot
+npx electron . --smoke --demo --smoke-director  # tool rail, Director, rope toggle + layout screenshot
 npx electron . --smoke --demo --smoke-guard  # allowed/blocked IPC path smoke
 ```

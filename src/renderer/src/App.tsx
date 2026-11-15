@@ -5,12 +5,12 @@ import CommandBar from './components/CommandBar'
 import Home from './components/Home'
 import PanelHost from './components/Panels'
 import TeamComposer from './components/TeamComposer'
-import Sidebar from './components/Sidebar'
+import ToolRail from './components/ToolRail'
 import TeamRail from './components/TeamRail'
 import { runCommand, pushMemory, spawnConsoles } from './actions'
 import { audioToWavBase64 } from './util'
 import { getHandle } from './runtime'
-import { makeChecklist, makeConsole, makeKanban, makeNote, makeOrchestrator } from './factory'
+import { makeConsole, makeNote, makeOrchestrator } from './factory'
 
 let demoSeeded = false
 
@@ -30,6 +30,7 @@ export default function App() {
   const closeWorkspace = useApp((s) => s.closeWorkspace)
   const renameWorkspace = useApp((s) => s.renameWorkspace)
   const setTool = useApp((s) => s.setTool)
+  const setWireFrom = useApp((s) => s.setWireFrom)
   const tool = useApp((s) => s.tool)
   const goHome = useApp((s) => s.goHome)
   const setThreadOpen = useApp((s) => s.setThreadOpen)
@@ -62,16 +63,12 @@ export default function App() {
         st.addRepo(path)
         st.patchSettings({ defaultAgent: 'shell' })
         const repo = activeRepo(useApp.getState())
-        const otto = makeConsole(120, 150, { title: 'Otto', agentId: 'shell', cwd: path })
-        const mira = makeConsole(120, 440, { title: 'Mira', agentId: 'shell', cwd: path })
-        const note = makeNote(570, 150, 'Ship the beta on Friday.\n\nThe board is local: every node lives in state.json.')
-        const kanban = makeKanban(870, 150)
-        kanban.columns[0].cards.push({ id: 'demo-1', title: 'Wire the planner', priority: 'high', done: false })
-        kanban.columns[2].cards.push({ id: 'demo-2', title: 'Console sessions', priority: 'med', done: false })
-        const checklist = makeChecklist(570, 360)
-        const orch = makeOrchestrator(570, 575, 'Orchestrator')
+        const otto = makeConsole(80, 100, { title: 'Otto', agentId: 'shell', cwd: path })
+        const mira = makeConsole(80, 400, { title: 'Mira', agentId: 'shell', cwd: path })
+        const note = makeNote(990, 80, 'Ship the beta on Friday.\n\nThe board is local: every node lives in state.json.')
+        const orch = makeOrchestrator(570, 70, 'Director')
         orch.wired = [otto.id, mira.id]
-        st.addNodes([otto, mira, note, kanban, checklist, orch])
+        st.addNodes([otto, mira, note, orch])
         st.updateBoard((b) => ({
           ...b,
           groups: [{ id: 'demo-group', name: 'Frontend squad', role: 'Frontend', tint: 'violet', memberIds: [otto.id, mira.id] }],
@@ -199,6 +196,8 @@ export default function App() {
         setPanel(null)
         useApp.getState().setSelection([])
         useApp.getState().setComposerOpen(false)
+        setTool('select')
+        setWireFrom(null)
       }
       if (mod && e.shiftKey && key === 'b') {
         e.preventDefault()
@@ -254,7 +253,7 @@ export default function App() {
       window.removeEventListener('keydown', down, true)
       window.removeEventListener('keyup', up, true)
     }
-  }, [settings.holdSpace, recording, recMode, startRecording, stopRecording, setPanel, setThreadOpen, setTool, toast])
+  }, [settings.holdSpace, recording, recMode, startRecording, stopRecording, setPanel, setThreadOpen, setTool, setWireFrom, toast])
 
   /* ------------------------------------------------------------- loops ---- */
 
@@ -380,7 +379,7 @@ export default function App() {
       </header>
 
       <div className="main">
-        {!showHome && <Sidebar />}
+        {!showHome && <ToolRail />}
         <div className="stage">
           {showHome || !repo || !board ? (
             <Home />

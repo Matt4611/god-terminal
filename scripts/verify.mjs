@@ -13,11 +13,12 @@ const steps = [
 if (!quick) {
   steps.push(
     {
-      name: 'UI smoke',
+      name: 'Director UI smoke',
       command: 'npx',
-      args: ['electron', '.', '--smoke', '--demo', '--smoke-ring'],
-      file: 'smoke-ring.png',
-      validate: (out) => /SMOKE_RING .*"menu":true.*"buttons":6/.test(out)
+      args: ['electron', '.', '--smoke', '--demo', '--smoke-director'],
+      file: 'smoke-director.png',
+      validate: (out) => /SMOKE_DIRECTOR .*"toolButtons":18.*"railWidth":46.*"director":true.*"hasGem":true.*"links":2.*"before":2.*"off":1.*"on":2.*"wires":2.*"railClear":true.*"teamClear":true.*"dockInside":true.*"directorClear":true.*"noOrb":true.*"overflow":false/.test(out) &&
+        /SMOKE_DIRECTOR_COMPACT .*"width":1080.*"height":680.*"toolButtons":18.*"buttonsFit":true.*"railWidth":46.*"railClear":true.*"teamHidden":true.*"dockInside":true.*"directorClear":true.*"overflow":false/.test(out)
     },
     {
       name: 'IPC guard smoke',

@@ -205,21 +205,106 @@ function createWindow(): void {
             })()`)
             console.log('SMOKE_ZOOMOUT', out)
             await shot('smoke-zoomout.png')
-          } else if (process.argv.includes('--smoke-ring')) {
+          } else if (process.argv.includes('--smoke-director')) {
             await mainWindow!.webContents.capturePage()
-            await new Promise((x) => setTimeout(x, 450))
-            const ring = await mainWindow!.webContents.executeJavaScript(`(async () => {
-              document.querySelector('.rail-orb')?.click()
-              await new Promise((r) => setTimeout(r, 650))
+            await new Promise((x) => setTimeout(x, 500))
+            const director = await mainWindow!.webContents.executeJavaScript(`(async () => {
+              const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+              const rect = (sel) => {
+                const el = document.querySelector(sel)
+                if (!el) return null
+                const r = el.getBoundingClientRect()
+                return { x: r.x, y: r.y, w: r.width, h: r.height, right: r.right, bottom: r.bottom }
+              }
+              const overlap = (a, b) => !!a && !!b && a.x < b.right && a.right > b.x && a.y < b.bottom && a.bottom > b.y
+              const rail = rect('[data-testid="tool-rail"]')
+              const stage = rect('.stage')
+              const team = rect('.team-rail')
+              const dock = rect('.command-dock')
+              const panel = rect('.node-orchestrator')
+              const count = () => document.querySelectorAll('.wire-core').length
+              const clickNode = (node) => {
+                const r = node.getBoundingClientRect()
+                node.dispatchEvent(new PointerEvent('pointerdown', {
+                  bubbles: true, cancelable: true, button: 0, buttons: 1,
+                  clientX: r.left + r.width / 2, clientY: r.top + r.height / 2
+                }))
+              }
+              const wireTool = document.querySelector('[data-testid="wire-tool"]')
+              const controller = document.querySelector('.node-orchestrator')
+              const crew = [...document.querySelectorAll('.node-console')]
+              const otto = crew.find((n) => n.querySelector('.node-title')?.textContent === 'Otto') ?? crew[0]
+              const before = count()
+              wireTool?.click()
+              await wait(120)
+              clickNode(controller)
+              await wait(120)
+              clickNode(otto)
+              await wait(160)
+              const off = count()
+              wireTool?.click()
+              await wait(120)
+              wireTool?.click()
+              await wait(120)
+              clickNode(controller)
+              await wait(180)
+              const on = count()
+              wireTool?.click()
+              await wait(120)
               return JSON.stringify({
-                menu: !!document.querySelector('.ring-menu'),
-                buttons: document.querySelectorAll('.ring-btn').length,
-                teamRail: !!document.querySelector('.team-rail'),
-                teamCards: document.querySelectorAll('.team-card').length
+                toolButtons: document.querySelectorAll('.tool-btn').length,
+                railWidth: rail ? Math.round(rail.w) : 0,
+                director: !!controller,
+                directorTitle: controller?.querySelector('.node-title')?.textContent ?? '',
+                hasGem: !!document.querySelector('.director-gem'),
+                links: document.querySelectorAll('.director-link').length,
+                before, off, on, wires: count(),
+                railClear: !!rail && !!stage && !overlap(rail, stage),
+                teamClear: !!stage && !!team && !overlap(stage, team) && (!rail || !overlap(rail, team)),
+                dockInside: !!dock && !!stage && dock.x >= stage.x && dock.right <= stage.right && dock.bottom <= stage.bottom,
+                directorClear: !!panel && !overlap(panel, rail) && !overlap(panel, team) && !overlap(panel, dock),
+                noOrb: !document.querySelector('.rail-orb') && !document.querySelector('.ring-menu') && !document.querySelector('.ring-btn'),
+                overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
               })
             })()`)
-            console.log('SMOKE_RING', ring)
-            await shot('smoke-ring.png')
+            console.log('SMOKE_DIRECTOR', director)
+            await mainWindow!.webContents.executeJavaScript(`document.querySelectorAll('.toast').forEach((t) => t.click())`)
+            await new Promise((x) => setTimeout(x, 120))
+            await shot('smoke-director.png')
+            mainWindow!.setSize(1080, 680)
+            await new Promise((x) => setTimeout(x, 700))
+            const compact = await mainWindow!.webContents.executeJavaScript(`(() => {
+              const rect = (sel) => {
+                const el = document.querySelector(sel)
+                if (!el) return null
+                const r = el.getBoundingClientRect()
+                return { x: r.x, y: r.y, w: r.width, h: r.height, right: r.right, bottom: r.bottom }
+              }
+              const overlap = (a, b) => !!a && !!b && a.x < b.right && a.right > b.x && a.y < b.bottom && a.bottom > b.y
+              const rail = rect('[data-testid="tool-rail"]')
+              const stage = rect('.stage')
+              const dock = rect('.command-dock')
+              const panel = rect('.node-orchestrator')
+              const teamEl = document.querySelector('.team-rail')
+              const buttons = [...document.querySelectorAll('.tool-btn')]
+              const buttonsFit = buttons.length === 18 && buttons.every((b) => {
+                const r = b.getBoundingClientRect()
+                return r.top >= 0 && r.bottom <= window.innerHeight && r.left >= 0 && r.right <= window.innerWidth
+              })
+              return JSON.stringify({
+                width: window.innerWidth, height: window.innerHeight,
+                toolButtons: buttons.length,
+                buttonsFit,
+                railWidth: rail ? Math.round(rail.w) : 0,
+                railClear: !!rail && !!stage && !overlap(rail, stage),
+                teamHidden: !teamEl || getComputedStyle(teamEl).display === 'none',
+                dockInside: !!dock && !!stage && dock.x >= stage.x && dock.right <= stage.right && dock.bottom <= stage.bottom,
+                directorClear: !!panel && !overlap(panel, rail) && !overlap(panel, dock),
+                overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+              })
+            })()`)
+            console.log('SMOKE_DIRECTOR_COMPACT', compact)
+            await shot('smoke-director-compact.png')
           } else if (process.argv.includes('--smoke-guard')) {
             const out = await mainWindow!.webContents.executeJavaScript(`(async () => {
               const cwd = await window.api.cwd()
@@ -282,7 +367,7 @@ function createWindow(): void {
         } finally {
           app.quit()
         }
-      }, process.argv.includes('--smoke-team') || process.argv.includes('--smoke-ui') || process.argv.includes('--smoke-brain') || process.argv.includes('--smoke-brain-chat') || process.argv.includes('--smoke-zoomout') || process.argv.includes('--smoke-ring') || process.argv.includes('--smoke-guard') ? 3200 : 5000)
+      }, process.argv.includes('--smoke-team') || process.argv.includes('--smoke-ui') || process.argv.includes('--smoke-brain') || process.argv.includes('--smoke-brain-chat') || process.argv.includes('--smoke-zoomout') || process.argv.includes('--smoke-director') || process.argv.includes('--smoke-guard') ? 3200 : 5000)
     })
   }
   mainWindow.on('closed', () => {

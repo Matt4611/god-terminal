@@ -25,6 +25,43 @@ type PanState = { kind: 'pan'; startX: number; startY: number; vx: number; vy: n
 type PenState = { points: { x: number; y: number }[] }
 type MarqueeState = { startX: number; startY: number; x: number; y: number; additive: boolean }
 
+function wireGeometry(
+  a: { x: number; y: number; w: number; h: number },
+  b: { x: number; y: number; w: number; h: number }
+): { d: string; x1: number; y1: number; x2: number; y2: number } {
+  const acx = a.x + a.w / 2
+  const acy = a.y + a.h / 2
+  const bcx = b.x + b.w / 2
+  const bcy = b.y + b.h / 2
+  const horizontal = Math.abs(bcx - acx) >= Math.abs(bcy - acy)
+  let x1: number, y1: number, x2: number, y2: number
+  let c1x: number, c1y: number, c2x: number, c2y: number
+  if (horizontal) {
+    const right = bcx >= acx
+    x1 = right ? a.x + a.w : a.x
+    y1 = acy
+    x2 = right ? b.x : b.x + b.w
+    y2 = bcy
+    const bend = Math.min(140, Math.max(18, Math.abs(x2 - x1) * 0.45)) * (right ? 1 : -1)
+    c1x = x1 + bend
+    c1y = y1
+    c2x = x2 - bend
+    c2y = y2
+  } else {
+    const down = bcy >= acy
+    x1 = acx
+    y1 = down ? a.y + a.h : a.y
+    x2 = bcx
+    y2 = down ? b.y : b.y + b.h
+    const bend = Math.min(140, Math.max(18, Math.abs(y2 - y1) * 0.45)) * (down ? 1 : -1)
+    c1x = x1
+    c1y = y1 + bend
+    c2x = x2
+    c2y = y2 - bend
+  }
+  return { d: `M ${x1} ${y1} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${x2} ${y2}`, x1, y1, x2, y2 }
+}
+
 export default function Board({ board, active = true }: { board: BoardType; active?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const worldRef = useRef<HTMLDivElement>(null)
@@ -35,6 +72,7 @@ export default function Board({ board, active = true }: { board: BoardType; acti
   const [pan, setPan] = useState<PanState | null>(null)
   const [pen, setPen] = useState<PenState | null>(null)
   const [marquee, setMarquee] = useState<MarqueeState | null>(null)
+  const [wireCursor, setWireCursor] = useState<{ x: number; y: number } | null>(null)
   const marqueeRef = useRef<MarqueeState | null>(null)
   const clipboard = useRef<AnyNode[]>([])
 
@@ -51,8 +89,12 @@ export default function Board({ board, active = true }: { board: BoardType; acti
   const removeNodes = useApp((s) => s.removeNodes)
   const bringToFront = useApp((s) => s.bringToFront)
   const toast = useApp((s) => s.toast)
+  const wireFrom = useApp((s) => s.wireFrom)
+  const setWireFrom = useApp((s) => s.setWireFrom)
+  const connectNodes = useApp((s) => s.connectNodes)
 
   const v = board.viewport
+  const wireSource = wireFrom ? board.nodes.find((n) => n.id === wireFrom) : undefined
 
   useEffect(() => {
     const el = ref.current
@@ -87,6 +129,21 @@ export default function Board({ board, active = true }: { board: BoardType; acti
       if (raf) cancelAnimationFrame(raf)
     }
   }, [])
+
+  useEffect(() => {
+    if (tool !== 'wire') {
+      setWireCursor(null)
+      return
+    }
+    const el = ref.current
+    if (!el) return
+    const move = (e: PointerEvent) => {
+      const rect = el.getBoundingClientRect()
+      setWireCursor({ x: (e.clientX - rect.left - v.x) / v.zoom, y: (e.clientY - rect.top - v.y) / v.zoom })
+    }
+    el.addEventListener('pointermove', move)
+    return () => el.removeEventListener('pointermove', move)
+  }, [tool, v.x, v.y, v.zoom])
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -385,6 +442,13 @@ export default function Board({ board, active = true }: { board: BoardType; acti
       return
     }
     if (e.button !== 0) return
+    if (tool === 'wire') {
+      if (wireFrom) {
+        setWireFrom(null)
+        toast('Connection canceled', 'info')
+      }
+      return
+    }
     if (tool === 'pen') {
       setPen({ points: [toWorld(e.clientX, e.clientY)] })
       return
@@ -415,6 +479,31 @@ export default function Board({ board, active = true }: { board: BoardType; acti
     if (e.button === 1 || e.button === 2 || tool === 'hand' || space) {
       e.preventDefault()
       setPan({ kind: 'pan', startX: e.clientX, startY: e.clientY, vx: v.x, vy: v.y })
+      return
+    }
+    if (tool === 'wire') {
+      e.preventDefault()
+      if (!wireFrom) {
+        setWireFrom(node.id)
+        setSelection([node.id])
+        toast('Rope: click another node', 'info')
+        return
+      }
+      if (wireFrom === node.id) {
+        setWireFrom(null)
+        return
+      }
+      const source = board.nodes.find((n) => n.id === wireFrom)
+      if (!source) {
+        setWireFrom(node.id)
+        setSelection([node.id])
+        return
+      }
+      const result = connectNodes(wireFrom, node.id)
+      if (result === 'added') toast(`Roped ${source.title} to ${node.title}`, 'ok')
+      else if (result === 'removed') toast('Connection removed', 'info')
+      setSelection([node.id])
+      if (source.kind !== 'orchestrator') setWireFrom(null)
       return
     }
     if (tool === 'eraser') {
@@ -487,14 +576,20 @@ export default function Board({ board, active = true }: { board: BoardType; acti
             const a = board.nodes.find((n) => n.id === w.from)
             const b = board.nodes.find((n) => n.id === w.to)
             if (!a || !b) return null
-            const x1 = a.x + a.w
-            const y1 = a.y + a.h / 2
-            const x2 = b.x
-            const y2 = b.y + b.h / 2
-            const mid = Math.max(40, Math.abs(x2 - x1) / 2)
-            const d = `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`
-            return <path key={w.id} className={`wire wire-${w.kind}`} d={d} />
+            const g = wireGeometry(a, b)
+            return (
+              <g key={w.id} className={`wire-group wire-${w.kind}`}>
+                <path className={`wire-base wire-${w.kind}`} d={g.d} />
+                <path className={`wire wire-core wire-${w.kind}`} d={g.d} />
+                <circle className={`wire-port wire-${w.kind}`} cx={g.x1} cy={g.y1} r={2.6} />
+                <circle className={`wire-port wire-${w.kind}`} cx={g.x2} cy={g.y2} r={2.6} />
+              </g>
+            )
           })}
+          {wireSource && wireCursor && (() => {
+            const g = wireGeometry(wireSource, { x: wireCursor.x, y: wireCursor.y, w: 0, h: 0 })
+            return <path className="wire wire-ghost" d={g.d} />
+          })()}
         </svg>
 
         {board.nodes.map((node) => {
@@ -502,7 +597,7 @@ export default function Board({ board, active = true }: { board: BoardType; acti
           return (
           <div
             key={node.id}
-            className={`node node-${node.kind} ${selected.includes(node.id) ? 'selected' : ''} ${drag && drag.ids.includes(node.id) ? 'dragging' : ''}`}
+            className={`node node-${node.kind} ${selected.includes(node.id) ? 'selected' : ''} ${wireFrom === node.id ? 'wire-source' : ''} ${drag && drag.ids.includes(node.id) ? 'dragging' : ''}`}
             style={{ left: node.x, top: node.y, width: node.w, height: node.h, zIndex: node.z, ...(accent ? { '--node-accent': accent } : {}) } as CSSProperties}
             onPointerDown={(e) => onNodeDown(e, node)}
             onDoubleClick={(e) => {
@@ -548,6 +643,13 @@ export default function Board({ board, active = true }: { board: BoardType; acti
         />
       )}
 
+      {tool === 'wire' && (
+        <div className="tool-note wire-banner" onPointerDown={(e) => e.stopPropagation()}>
+          <span className="wire-banner-dot" />
+          <span>{wireSource ? `Connect ${wireSource.title} to…` : 'Connect: click the first node'}</span>
+          <button className="link" onClick={() => { setWireFrom(null); setTool('select') }}>Cancel</button>
+        </div>
+      )}
       {tool === 'pen' && <div className="tool-note">Pen: drag to draw. P/E switch pen and eraser.</div>}
       {tool === 'eraser' && <div className="tool-note">Eraser: click a node to remove it.</div>}
       {tool === 'text' && <div className="tool-note">Click anywhere to place a text box.</div>}

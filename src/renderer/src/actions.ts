@@ -1,6 +1,6 @@
 import { PRESETS, ROLE_AGENT, allAgents, getAgent } from '@shared/agents'
 import { parseCommand, riskOf, type ParseContext } from '@shared/parser'
-import type { AnyNode, Board, ConsoleNode, Group, PlannerAction, PresetDef } from '@shared/types'
+import type { AnyNode, Board, ConsoleNode, Group, OrchestratorNode, PlannerAction, PresetDef, Wire } from '@shared/types'
 import { makeConsole, makeKanban, makeOrchestrator, makeWeb, newNode } from './factory'
 import { activeRepo, consolesOf, llmConfig, useApp } from './store'
 import { digest, sendOrder } from './runtime'
@@ -35,15 +35,15 @@ const CELL_H = 260
 const GAP_X = 32
 const GAP_Y = 42
 
-/** Scan a grid around the viewport for a block of consoles that hits nothing. */
-function freeOrigin(b: Board, cols: number, rows: number): { x: number; y: number } {
+/** Scan a grid around the viewport for a block that hits nothing. */
+function freeOriginFor(
+  b: Board, w: number, h: number, start?: { x: number; y: number }
+): { x: number; y: number } {
   const v = b.viewport
-  const base = {
+  const base = start ?? {
     x: (window.innerWidth / 2 - 380 - v.x) / v.zoom,
     y: (window.innerHeight / 2 - 220 - v.y) / v.zoom
   }
-  const w = cols * CELL_W + (cols - 1) * GAP_X
-  const h = rows * CELL_H + (rows - 1) * GAP_Y
   for (let gy = -3; gy <= 5; gy++) {
     for (let gx = -4; gx <= 6; gx++) {
       const x = base.x + gx * 440
@@ -58,6 +58,10 @@ function freeOrigin(b: Board, cols: number, rows: number): { x: number; y: numbe
   const maxX = b.nodes.length ? Math.max(...b.nodes.map((n) => n.x + n.w)) : base.x
   const minY = b.nodes.length ? Math.min(...b.nodes.map((n) => n.y)) : base.y
   return { x: maxX + 64, y: minY }
+}
+
+function freeOrigin(b: Board, cols: number, rows: number): { x: number; y: number } {
+  return freeOriginFor(b, cols * CELL_W + (cols - 1) * GAP_X, rows * CELL_H + (rows - 1) * GAP_Y)
 }
 
 export function spawnConsoles(
@@ -107,6 +111,31 @@ export function spawnConsoles(
     }
   }, 340)
   return made
+}
+
+/** Spawn a director at a free spot above the command dock. */
+export function spawnDirector(): OrchestratorNode | null {
+  const st = useApp.getState()
+  const b = st.board()
+  const repo = activeRepo(st)
+  if (!b || !repo) {
+    st.toast('Open a project first', 'error')
+    return null
+  }
+  const v = b.viewport
+  const origin = freeOriginFor(b, 360, 420, {
+    x: (window.innerWidth / 2 - 420 - v.x) / v.zoom,
+    y: (110 - v.y) / v.zoom
+  })
+  const director = makeOrchestrator(origin.x, origin.y, 'Director')
+  director.w = 360
+  director.h = 420
+  st.addNode(director)
+  st.setSelection([director.id])
+  st.setTool('select')
+  st.toast('Director spawned — rope in your agents', 'ok')
+  setTimeout(() => window.dispatchEvent(new CustomEvent('hive:frame', { detail: director.id })), 280)
+  return director
 }
 
 export interface TeamSlot {
@@ -246,6 +275,7 @@ export function deployPreset(id: string): void {
     memberIds: ids
   }))
   const right = origin.x + 80 + Math.max(...preset.lanes.map((l) => l.x)) + 420
+  const wires: Wire[] = []
   if (preset.extras?.includes('kanban')) {
     const kb = makeKanban(right, origin.y + 80)
     nodes.push(kb)
@@ -254,12 +284,17 @@ export function deployPreset(id: string): void {
     nodes.push(makeWeb(right, origin.y + 500))
   }
   if (preset.extras?.includes('orchestrator')) {
-    const orch = makeOrchestrator(origin.x, origin.y - 300)
+    const orch = makeOrchestrator(origin.x, origin.y - 300, 'Director')
+    orch.w = 360
+    orch.h = 420
     orch.wired = nodes.filter((n) => n.kind === 'console').map((n) => n.id)
     nodes.push(orch)
+    for (const id of orch.wired) {
+      wires.push({ id: uid(), from: id, to: orch.id, kind: 'orchestrator' })
+    }
   }
   st.addNodes(nodes)
-  st.updateBoard((board) => ({ ...board, groups: [...board.groups, ...groups] }))
+  st.updateBoard((board) => ({ ...board, groups: [...board.groups, ...groups], wires: [...board.wires, ...wires] }))
   st.setSelection(nodes.filter((n) => n.kind === 'console').map((n) => n.id))
   st.toast(`${preset.name} deployed · ${preset.lanes.length} consoles`, 'ok')
   setTimeout(() => window.dispatchEvent(new CustomEvent('hive:fit')), 320)

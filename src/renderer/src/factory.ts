@@ -111,9 +111,9 @@ export function makeCard(x: number, y: number, cardKind: CardNode['cardKind'], e
   }
 }
 
-export function makeOrchestrator(x: number, y: number, name = 'Orchestrator'): OrchestratorNode {
+export function makeOrchestrator(x: number, y: number, name = 'Director'): OrchestratorNode {
   return {
-    ...base(x, y, 320, 280, name),
+    ...base(x, y, 360, 420, name),
     kind: 'orchestrator',
     wired: []
   }
@@ -129,8 +129,9 @@ export function newNode(kind: string, x: number, y: number, extra: Record<string
     case 'web tile':
     case 'web': return makeWeb(x, y, (extra.url as string) ?? 'http://localhost:3000')
     case 'shape': return makeShape(x, y, (extra.shape as ShapeNode['shape']) ?? 'rect')
+    case 'director':
     case 'orchestrator':
-      return { ...makeOrchestrator(x, y, (extra.name as string) || 'Orchestrator'), wired: (extra.wired as string[]) ?? [] }
+      return { ...makeOrchestrator(x, y, (extra.name as string) || 'Director'), wired: (extra.wired as string[]) ?? [] }
     case 'memory':
       return {
         ...base(x, y, 300, 240, 'Memory'),

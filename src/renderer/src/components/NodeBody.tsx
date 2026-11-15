@@ -4,10 +4,11 @@ import type {
   AnyNode, CalendarEvent, CardNode, ChecklistNode, ConsoleNode as ConsoleType, KanbanNode,
   MemoryNode, NoteNode, OrchestratorNode, ShapeNode, TextNode, WebNode, BranchesNode
 } from '@shared/types'
+import { getAgent } from '@shared/agents'
 import { useApp } from '../store'
 import ConsoleNode from './ConsoleNode'
 import { sendOrder } from '../runtime'
-import { spawnConsoles } from '../actions'
+import { runCommand, spawnConsoles } from '../actions'
 import { dayKey, uid } from '../util'
 
 const md = (text: string) => ({ __html: marked.parse(text, { async: false }) as string })
@@ -344,72 +345,132 @@ function CardView({ node }: { node: CardNode }) {
 
 function OrchestratorView({ node }: { node: OrchestratorNode }) {
   const board = useApp((s) => s.board())
-  const patch = useApp((s) => s.patchNode)
-  const updateBoard = useApp((s) => s.updateBoard)
+  const connectNodes = useApp((s) => s.connectNodes)
+  const setTool = useApp((s) => s.setTool)
+  const setWireFrom = useApp((s) => s.setWireFrom)
+  const tool = useApp((s) => s.tool)
+  const wireFrom = useApp((s) => s.wireFrom)
+  const toast = useApp((s) => s.toast)
   const [text, setText] = useState('')
   const consoles = (board?.nodes.filter((n) => n.kind === 'console') ?? []) as ConsoleType[]
-  const wired = consoles.filter((c) => node.wired.includes(c.id))
+  const linked = new Set(node.wired)
+  for (const w of board?.wires ?? []) {
+    if (w.from === node.id) linked.add(w.to)
+    if (w.to === node.id) linked.add(w.from)
+  }
+  const wired = consoles.filter((c) => linked.has(c.id))
+  const linking = tool === 'wire' && wireFrom === node.id
+
+  const toggleLink = () => {
+    if (linking) {
+      setTool('select')
+      setWireFrom(null)
+      return
+    }
+    setTool('wire')
+    setWireFrom(node.id)
+    toast('Director linking — pick an agent on the board', 'info')
+  }
+
+  const spawnAndLink = () => {
+    const made = spawnConsoles(1)
+    if (!made[0]) return
+    connectNodes(node.id, made[0].id)
+    toast(`Linked ${made[0].title} to the Director`, 'ok')
+  }
+
+  const send = () => {
+    const order = text.trim()
+    if (!order) return
+    if (wired.length) {
+      for (const c of wired) sendOrder(c.id, order)
+      toast(`Order sent to ${wired.length} agent${wired.length === 1 ? '' : 's'}`, 'ok')
+    } else {
+      void runCommand(order)
+    }
+    setText('')
+  }
+
   return (
-    <div className="orch-body">
-      <div className="muted small">{wired.length} agent(s) wired</div>
-      <div className="wire-list">
-        {wired.map((c) => (
-          <div key={c.id} className="wire-row">
-            <span className={`dot ${c.status === 'NEEDS YOU' ? 'needs' : ''}`} />
-            <span>{c.title}</span>
-            <span className="spacer" />
-            <button className="link" onClick={() => patch(node.id, { wired: node.wired.filter((x) => x !== c.id) })}>×</button>
-          </div>
-        ))}
-      </div>
-      <select
-        className="ghost-input"
-        value=""
-        onChange={(e) => {
-          const id = e.target.value
-          if (!id) return
-          patch(node.id, { wired: [...new Set([...node.wired, id])] })
-          updateBoard((b) => ({
-            ...b,
-            wires: [...b.wires, { id: uid(), from: id, to: node.id, kind: 'orchestrator' as const }]
-          }))
-        }}
-      >
-        <option value="">Wire a console…</option>
-        {consoles.filter((c) => !node.wired.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
-      </select>
-      <textarea
-        className="ghost-input"
-        rows={2}
-        value={text}
-        placeholder="Order these consoles…"
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            if (!text.trim()) return
-            if (!wired.length) return
-            for (const c of wired) sendOrder(c.id, text.trim())
-            setText('')
-          }
-        }}
-      />
-      <div className="row">
-        <button
-          className="btn small"
-          onClick={() => {
-            const made = spawnConsoles(1)
-            if (made[0]) {
-              patch(node.id, { wired: [...node.wired, made[0].id] })
-              updateBoard((b) => ({
-                ...b,
-                wires: [...b.wires, { id: uid(), from: made[0].id, to: node.id, kind: 'orchestrator' as const }]
-              }))
-            }
-          }}
-        >
-          Spawn agent
+    <div className="director-body">
+      <div className="director-top">
+        <span className="director-kicker"><i className="director-dot" /> {wired.length ? `${wired.length} linked` : 'No consoles connected'}</span>
+        <span className="spacer" />
+        <button type="button" className={`director-connect ${linking ? 'on' : ''}`} onClick={toggleLink} aria-pressed={linking}>
+          <span className="link-mark">⌁</span> {linking ? 'Linking' : 'Connect'}
         </button>
+      </div>
+
+      {wired.length > 0 && (
+        <div className="director-links">
+          {wired.map((c) => {
+            const agent = getAgent(c.agentId)
+            return (
+              <div key={c.id} className="director-link">
+                <span
+                  className="director-avatar"
+                  style={{
+                    background: `color-mix(in srgb, ${agent.color} 18%, var(--panel-2))`,
+                    borderColor: `color-mix(in srgb, ${agent.color} 38%, transparent)`,
+                    color: agent.color
+                  }}
+                >
+                  {agent.name.slice(0, 1)}
+                </span>
+                <button
+                  type="button"
+                  className="director-link-main"
+                  onClick={() => window.dispatchEvent(new CustomEvent('hive:frame', { detail: c.id }))}
+                  title={`Focus ${c.title}`}
+                >
+                  <b>{c.title}</b>
+                  <em>{agent.name} · {c.status}</em>
+                </button>
+                <button
+                  type="button"
+                  className="director-unlink"
+                  onClick={() => connectNodes(node.id, c.id)}
+                  title={`Disconnect ${c.title}`}
+                  aria-label={`Disconnect ${c.title}`}
+                >
+                  ×
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <div className="director-stage">
+        <button
+          type="button"
+          className={`director-orb ${linking ? 'linking' : ''}`}
+          onClick={toggleLink}
+          aria-label={linking ? 'Cancel linking' : 'Link an agent'}
+          aria-pressed={linking}
+          title={linking ? 'Linking — pick an agent' : 'Click to link an agent'}
+        >
+          <span className="director-ring" aria-hidden="true" />
+          <span className="director-gem" aria-hidden="true">
+            <span className="director-gem-core" />
+            <span className="director-gem-shine" />
+          </span>
+          <span className="director-spark s1" aria-hidden="true" />
+          <span className="director-spark s2" aria-hidden="true" />
+        </button>
+        <b>{wired.length ? `${wired.length} agent${wired.length === 1 ? '' : 's'} wired` : 'No agents wired'}</b>
+        <p>{linking ? 'Click any agent on the board to rope it in.' : wired.length ? 'Every order goes to the whole wired crew.' : 'Spawn a fresh lane below, or tap Connect and pick consoles on the board.'}</p>
+        <button type="button" className="director-spawn" onClick={spawnAndLink}><span>＋</span> Spawn agent</button>
+      </div>
+
+      <div className="director-cmd">
+        <input
+          value={text}
+          placeholder={wired.length ? 'Order the wired crew…' : "Try 'spawn two reviewers'…"}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); send() } }}
+        />
+        <button type="button" className="director-send" onClick={send} disabled={!text.trim()} title="Send order" aria-label="Send order">↑</button>
       </div>
     </div>
   )

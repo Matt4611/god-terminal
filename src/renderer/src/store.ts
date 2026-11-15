@@ -12,7 +12,7 @@ export type PanelName =
   | 'presets' | 'mission' | 'git' | 'usage' | 'settings' | 'skills' | 'markdown'
   | 'code' | 'documents' | 'diagrams' | 'memory' | 'loops' | 'profiles' | 'about'
 
-export type Tool = 'select' | 'hand' | 'note' | 'text' | 'shape' | 'pen' | 'eraser' | 'web' | 'image' | 'console'
+export type Tool = 'select' | 'hand' | 'note' | 'text' | 'shape' | 'pen' | 'eraser' | 'web' | 'image' | 'console' | 'wire'
 
 export interface Toast {
   id: string
@@ -57,6 +57,7 @@ interface AppState {
   threadOpen: boolean
   selected: string[]
   tool: Tool
+  wireFrom: string | null
   showHome: boolean
   toasts: Toast[]
   commandDraft: string
@@ -79,6 +80,7 @@ interface AppState {
   updateBoard: (fn: (b: Board) => Board) => void
   addNode: (node: AnyNode) => void
   addNodes: (nodes: AnyNode[]) => void
+  connectNodes: (fromId: string, toId: string) => 'added' | 'removed' | 'none'
   patchNode: (id: string, patch: Partial<AnyNode> & Record<string, unknown>) => void
   removeNodes: (ids: string[]) => void
   bringToFront: (id: string) => void
@@ -90,6 +92,7 @@ interface AppState {
 
   setPanel: (p: PanelName | null) => void
   setTool: (t: Tool) => void
+  setWireFrom: (id: string | null) => void
   setThreadOpen: (v: boolean) => void
   setCommandDraft: (v: string) => void
   setDictation: (v: boolean) => void
@@ -143,6 +146,7 @@ export const useApp = create<AppState>((set, get) => ({
   threadOpen: false,
   selected: [],
   tool: 'select',
+  wireFrom: null,
   showHome: true,
   toasts: [],
   commandDraft: '',
@@ -289,6 +293,35 @@ export const useApp = create<AppState>((set, get) => ({
       return { ...b, nodes: [...b.nodes, ...nodes.map((n, i) => ({ ...n, z: top + i + 1 }))] }
     }),
 
+  connectNodes: (fromId, toId) => {
+    if (fromId === toId) return 'none'
+    const b = get().board()
+    if (!b) return 'none'
+    const from = b.nodes.find((n) => n.id === fromId)
+    const to = b.nodes.find((n) => n.id === toId)
+    if (!from || !to) return 'none'
+    const existing = b.wires.find(
+      (w) => (w.from === fromId && w.to === toId) || (w.from === toId && w.to === fromId)
+    )
+    const nextWire = {
+      id: uid(),
+      from: fromId,
+      to: toId,
+      kind: from.kind === 'orchestrator' || to.kind === 'orchestrator' ? 'orchestrator' as const : 'plain' as const
+    }
+    get().updateBoard((board) => ({
+      ...board,
+      wires: existing ? board.wires.filter((w) => w.id !== existing.id) : [...board.wires, nextWire],
+      nodes: board.nodes.map((n) => {
+        if (n.kind !== 'orchestrator' || (n.id !== fromId && n.id !== toId)) return n
+        const other = n.id === fromId ? toId : fromId
+        if (existing) return { ...n, wired: n.wired.filter((id) => id !== other) }
+        return n.wired.includes(other) ? n : { ...n, wired: [...n.wired, other] }
+      })
+    }))
+    return existing ? 'removed' : 'added'
+  },
+
   // Patch by id across every workspace: a console keeps reporting while its
   // workspace is in the background.
   patchNode: (id, patch) =>
@@ -312,7 +345,9 @@ export const useApp = create<AppState>((set, get) => ({
   removeNodes: (ids) =>
     get().updateBoard((b) => ({
       ...b,
-      nodes: b.nodes.filter((n) => !ids.includes(n.id)),
+      nodes: b.nodes
+        .filter((n) => !ids.includes(n.id))
+        .map((n) => (n.kind === 'orchestrator' ? { ...n, wired: n.wired.filter((id) => !ids.includes(id)) } : n)),
       wires: b.wires.filter((w) => !ids.includes(w.from) && !ids.includes(w.to)),
       groups: b.groups
         .map((g) => ({ ...g, memberIds: g.memberIds.filter((m) => !ids.includes(m)) }))
@@ -337,7 +372,8 @@ export const useApp = create<AppState>((set, get) => ({
   redo: () => stepHistory(1),
 
   setPanel: (p) => set({ panel: p, missionOpen: p === 'mission' }),
-  setTool: (t) => set({ tool: t }),
+  setTool: (t) => set((s) => ({ tool: t, wireFrom: t === 'wire' ? s.wireFrom : null })),
+  setWireFrom: (id) => set({ wireFrom: id }),
   setThreadOpen: (v) => set({ threadOpen: v }),
   setCommandDraft: (v) => set({ commandDraft: v }),
   setDictation: (v) => set({ dictation: v }),
