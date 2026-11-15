@@ -4,6 +4,9 @@
   "description": "Local-first board for orchestrating agent CLIs, with local models.",
   "main": "./out/main/index.js",
   "license": "MIT",
+  "author": {
+    "name": "Matt4611"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "demo": "electron-vite build && electron . --demo",
@@ -55,7 +58,12 @@
     },
     "win": {
       "target": "nsis",
-      "signAndEditExecutable": false
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": true
+    },
+    "nsis": {
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
     }
   }
 }

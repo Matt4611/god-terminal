@@ -28,6 +28,14 @@ This repository intentionally includes the complete build snapshot: `node_module
 `release/`. Files above GitHub's 100 MB limit are stored with Git LFS, so install Git LFS and run
 `git lfs install` before cloning if you need the Electron binary and the Windows release files.
 
+### Code signing
+
+`npm run dist` signs the Windows installer automatically when `CSC_LINK` and
+`CSC_KEY_PASSWORD` are set. `CSC_LINK` can point to a `.pfx` file or contain a base64-encoded
+PFX; the password stays in the environment. Without those variables the installer is unsigned.
+GitHub Actions reads the same values from the repository secrets `CSC_LINK` and
+`CSC_KEY_PASSWORD` and verifies the signature when a certificate is configured.
+
 ## Run
 
 ```bash

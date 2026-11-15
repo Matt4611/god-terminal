@@ -17,6 +17,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
 
+    env:
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,6 +49,25 @@ jobs:
         shell: pwsh
         run: Remove-Item -Recurse -Force release -ErrorAction SilentlyContinue
 
+      # electron-builder's winCodeSign archive contains macOS symlinks that 7-Zip
+      # cannot create without SeCreateSymbolicLinkPrivilege. Extract only the
+      # regular files so rcedit/signtool are available for icon embedding.
+      - name: Prepare winCodeSign tools
+        shell: pwsh
+        run: |
+          $cache = Join-Path $env:LOCALAPPDATA "electron-builder\Cache\winCodeSign\winCodeSign-2.6.0"
+          if (Test-Path (Join-Path $cache "windows-10\x64\signtool.exe")) {
+            Write-Host "winCodeSign already cached"
+            exit 0
+          }
+          if (Test-Path $cache) { Remove-Item -Recurse -Force $cache }
+          $archive = Join-Path $env:TEMP "winCodeSign-2.6.0.7z"
+          Invoke-WebRequest -Uri "https://github.com/electron-userland/electron-builder-binaries/releases/download/winCodeSign-2.6.0/winCodeSign-2.6.0.7z" -OutFile $archive
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          & "node_modules\7zip-bin\win\x64\7za.exe" x $archive "-o$cache" "-snl-" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "7za failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path (Join-Path $cache "windows-10\x64\signtool.exe"))) { throw "winCodeSign extraction incomplete" }
+
       - name: Package Windows installer
         run: npm run dist:ci
         env:
@@ -63,6 +86,18 @@ jobs:
           "Installer: ``$installer``" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
           "Size: $size bytes" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
           "SHA-256: ``$hash``" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Verify digital signature
+        if: env.CSC_LINK != ''
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $installer = Join-Path "release" "God Terminal Setup $version.exe"
+          $signature = Get-AuthenticodeSignature $installer
+          if ($signature.Status -ne "Valid") {
+            throw "Installer signature is not valid: $($signature.Status)"
+          }
+          "Signature: $($signature.SignerCertificate.Subject)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
