@@ -16,7 +16,8 @@
     "verify:quick": "node scripts/verify.mjs --quick",
     "rebuild": "echo prebuilt binaries, no rebuild needed",
     "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder --win"
+    "dist": "npm run build && electron-builder --win",
+    "dist:ci": "npm run build && electron-builder --win --publish never"
   },
   "dependencies": {
     "@lydell/node-pty": "^1.2.0-beta.18",

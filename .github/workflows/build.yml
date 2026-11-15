@@ -46,7 +46,7 @@ jobs:
         run: Remove-Item -Recurse -Force release -ErrorAction SilentlyContinue
 
       - name: Package Windows installer
-        run: npm run dist
+        run: npm run dist:ci
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
