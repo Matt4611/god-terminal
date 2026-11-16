@@ -4,6 +4,8 @@ A local-first board for orchestrating agent CLIs, rebuilt for Windows (and macOS
 real PTY terminals and local models. Functional equivalent of a macOS-only board app — own code,
 own UI, no copied assets.
 
+its still in beta so it has some bugs but they will be fixed in the next time
+
 ```
 ┌ topbar: brand · repo · workspaces · needs-you · live ───────────┐
 │ tool │                  infinite board                  │ team  │
